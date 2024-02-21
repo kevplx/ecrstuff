@@ -1,0 +1,29 @@
+delete_images:
+  stage: delete_images
+  image: python:3.9
+  variables:
+    AWS_ACCESS_KEY_ID: "$AWS_ACCESS_KEY_ID"
+    AWS_SECRET_ACCESS_KEY: "$AWS_SECRET_ACCESS_KEY"
+    AWS_DEFAULT_REGION: "$AWS_DEFAULT_REGION"
+  script:
+    - |
+      ecs_services=$(aws ecs list-services --cluster your-ecs-cluster-name --query 'serviceArns[*]' --output text)
+      ecs_service_names=$(echo "$ecs_services" | awk -F'/' '{print $2}')
+      for service in $ecs_service_names; do
+          task_def=$(aws ecs describe-services --cluster your-ecs-cluster-name --services $service --query 'services[*].taskDefinition' --output text)
+          containers=$(aws ecs describe-task-definition --task-definition $task_def --query 'taskDefinition.containerDefinitions[*].image' --output text)
+          for container in $containers; do
+              repository=$(echo $container | cut -d: -f1)
+              tag=$(echo $container | cut -d: -f2)
+              if aws ecr describe-images --repository-name $repository --image-ids imageTag=$tag &> /dev/null; then
+                  echo "Deleting image: $container"
+                  aws ecr batch-delete-image --repository-name $repository --image-ids imageTag=$tag
+              else
+                  echo "Image not found in ECR: $container"
+              fi
+          done
+      done
+  when: manual
+  allow_failure: true
+  only:
+    - schedules

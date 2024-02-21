@@ -1,0 +1,44 @@
+stages:
+  - cleanup
+
+cleanup_images:
+  stage: cleanup
+  image: python:3.9
+  variables:
+    AWS_ACCESS_KEY_ID: "$AWS_ACCESS_KEY_ID"
+    AWS_SECRET_ACCESS_KEY: "$AWS_SECRET_ACCESS_KEY"
+    AWS_DEFAULT_REGION: "$AWS_DEFAULT_REGION"
+  script:
+    - pip install awscli
+    # List all ECS services
+    - ecs_services=$(aws ecs list-services --cluster your-ecs-cluster-name --query 'serviceArns[*]' --output text)
+    # Extract service names
+    - ecs_service_names=$(echo "$ecs_services" | awk -F'/' '{print $2}')
+    # Loop through each ECS service
+    - for service in $ecs_service_names; do
+        # Get task definition for the service
+        task_def=$(aws ecs describe-services --cluster your-ecs-cluster-name --services $service --query 'services[*].taskDefinition' --output text)
+        # Get container names from task definition
+        containers=$(aws ecs describe-task-definition --task-definition $task_def --query 'taskDefinition.containerDefinitions[*].image' --output text)
+        # Loop through each container
+        for container in $containers; do
+          # Extract repository name and tag from the container image
+          repository=$(echo $container | cut -d: -f1)
+          tag=$(echo $container | cut -d: -f2)
+          # List images in the repository
+          images=$(aws ecr list-images --repository-name $repository --query 'imageIds[*]' --output text)
+          # Loop through each image
+          for image in $images; do
+            # Check if the image is used by any ECS service
+            if [[ $container == *"$image"* ]]; then
+              echo "Image $image is being used by ECS service $service, skipping deletion."
+            else
+              echo "Image $image is not being used by any ECS service, deleting..."
+              # Delete the image
+              aws ecr batch-delete-image --repository-name $repository --image-ids imageDigest=$image
+            fi
+          done
+        done
+      done
+  only:
+    - schedules

@@ -1,0 +1,41 @@
+delete_images:
+  stage: delete_images
+  image: python:3.9
+  variables:
+    AWS_ACCESS_KEY_ID: "$AWS_ACCESS_KEY_ID"
+    AWS_SECRET_ACCESS_KEY: "$AWS_SECRET_ACCESS_KEY"
+    AWS_DEFAULT_REGION: "$AWS_DEFAULT_REGION"
+  script:
+    - |
+      ecs_services=$(aws ecs list-services --cluster your-ecs-cluster-name --query 'serviceArns')
+      ecs_service_names=$(echo "$ecs_services" | jq -r '.[]' | awk -F'/' '{print $NF}')
+      echo "ECS Services:"
+      for service in $ecs_service_names; do
+          if [[ "$service" =~ ^[a-zA-Z0-9\-_]{1,255}$ ]]; then
+              echo "- $service"
+              task_def=$(aws ecs describe-services --cluster your-ecs-cluster-name --services "$service" --query 'services[*].taskDefinition')
+              containers=$(aws ecs describe-task-definition --task-definition "$task_def" --query 'taskDefinition.containerDefinitions[*].image')
+              for container in $containers; do
+                  repository=$(echo $container | cut -d: -f1)
+                  tag=$(echo $container | cut -d: -f2)
+                  
+                  # Check if the container name contains braces or square brackets, and remove them if present
+                  if [[ "$container" =~ ^[\{\[].*[\}\]]$ ]]; then
+                      container=$(echo "$container" | tr -d '{}[]')
+                  fi
+                  
+                  if aws ecr describe-images --repository-name $repository --image-ids imageTag=$tag &> /dev/null; then
+                      echo "Deleting image: $container"
+                      aws ecr batch-delete-image --repository-name $repository --image-ids imageTag=$tag
+                  else
+                      echo "Image not found in ECR: $container"
+                  fi
+              done
+          else
+              echo "Invalid service name: $service"
+          fi
+      done
+  when: manual
+  allow_failure: true
+  only:
+    - schedules

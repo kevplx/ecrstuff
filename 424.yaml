@@ -1,0 +1,55 @@
+delete_images:
+  stage: delete_images
+  image: python:3.9
+  variables:
+    AWS_ACCESS_KEY_ID: "$AWS_ACCESS_KEY_ID"
+    AWS_SECRET_ACCESS_KEY: "$AWS_SECRET_ACCESS_KEY"
+    AWS_DEFAULT_REGION: "$AWS_DEFAULT_REGION"
+  script:
+    - |
+      # Retrieve a list of ECS services in the specified cluster
+      ecs_services=$(aws ecs list-services --cluster your-ecs-cluster-name --query 'serviceArns')
+      # Extract ECS service names from the ARNs
+      ecs_service_names=$(echo "$ecs_services" | jq -r '.[]' | awk -F'/' '{print $NF}')
+      # Output ECS service names for visibility
+      echo "ECS Services:"
+      for service in $ecs_service_names; do
+        echo "- $service"
+        # Retrieve task definition for the service
+        task_def=$(aws ecs describe-services --cluster your-ecs-cluster-name --services "$service" --query 'services[*].taskDefinition' | jq -r '.[0]')
+        # Retrieve container images from the task definition using jq
+        containers=$(aws ecs describe-task-definition --task-definition "$task_def" | jq -r '.taskDefinition.containerDefinitions[].image')
+        # Loop through each container image
+        for container in $containers; do
+          # Extract repository from the container image
+          repository=$(echo "$container" | cut -d/ -f1)
+          repository_name=$(basename "$repository")
+          # Extract image name from the repository
+          image_name=$(basename "$container")
+          # Check if the container name contains braces or square brackets, and remove them if present
+          if [[ "$container" =~ ^[\{\[].*[\}\]]$ ]]; then
+            container=$(echo "$container" | tr -d '{}[]')
+          fi
+          # Check if the image is being used by the ECS service
+          if [[ "$container" != *"$(echo "$task_def" | cut -d/ -f2)"* ]]; then
+            # Delete all other image tags for repository if it's not being used by the ECS service
+            echo "Deleting all other image tags for repository $repository_name not being used by ECS service $service"
+            # Retrieve all image tags for the repository
+            all_tags=$(aws ecr describe-images --repository-name "$repository_name" --query 'imageDetails[*].imageTags' --output json | jq -r '.[] | select(. != null) | .[]')
+            # Delete each tag except the one being used by the ECS service
+            for tag in $all_tags; do
+              if [[ "$tag" != "$image_name" ]]; then
+                aws ecr batch-delete-image --repository-name "$repository_name" --image-ids imageTag="$tag"
+                echo "Deleted image tag: $tag"
+              fi
+            done
+          fi
+        done
+      done
+  # Manual approval required to run the job
+  when: manual
+  # Allow the job to fail without failing the pipeline
+  allow_failure: true
+  # Run the job only on scheduled pipelines
+  only:
+    - schedules

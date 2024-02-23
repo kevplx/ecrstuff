@@ -1,0 +1,57 @@
+delete_images:
+  stage: delete_images
+  image: python:3.9
+  variables:
+    AWS_ACCESS_KEY_ID: "$AWS_ACCESS_KEY_ID"
+    AWS_SECRET_ACCESS_KEY: "$AWS_SECRET_ACCESS_KEY"
+    AWS_DEFAULT_REGION: "$AWS_DEFAULT_REGION"
+  script:
+    # Retrieve a list of ECS services in the specified cluster
+    - ecs_services=$(aws ecs list-services --cluster your-ecs-cluster-name --query 'serviceArns')
+    # Extract ECS service names from the ARNs
+    - ecs_service_names=$(echo "$ecs_services" | jq -r '.[]' | awk -F'/' '{print $NF}')
+    # Output ECS service names for visibility
+    - echo "ECS Services:"
+    - for service in $ecs_service_names; do
+    -   echo "- $service"
+    - done
+    # Loop through each ECS service
+    - for service in $ecs_service_names; do
+    # Check if the service name is non-empty
+    -   if [[ -n "$service" ]]; then
+    -     echo "Valid service name: $service"
+    # Retrieve task definition for the service
+    -     task_def=$(aws ecs describe-services --cluster your-ecs-cluster-name --services "$service" --query 'services[*].taskDefinition')
+    # Retrieve container images from the task definition
+    -     containers=$(aws ecs describe-task-definition --task-definition "$task_def" --query 'taskDefinition.containerDefinitions[*].image')
+    # Loop through each container image
+    -     for container in $containers; do
+    # Extract repository and tag from the container image
+    -       repository=$(echo $container | cut -d: -f1)
+    -       tag=$(echo $container | cut -d: -f2)
+    # Check if the container name contains braces or square brackets, and remove them if present
+    -       if [[ "$container" =~ ^[\{\[].*[\}\]]$ ]]; then
+    -         container=$(echo "$container" | tr -d '{}[]')
+    -       fi
+    # Check if the image exists in the corresponding ECR repository
+    -       if aws ecr describe-images --repository-name $repository --image-ids imageTag=$tag &> /dev/null; then
+    -         echo "Deleting image: $container"
+    # Delete the image if it exists in ECR
+    -         aws ecr batch-delete-image --repository-name $repository --image-ids imageTag=$tag
+    -       else
+    # Print a message if the image is not found in ECR
+    -         echo "Image not found in ECR: $container"
+    -       fi
+    -     done
+    -   else
+    # Print a message for invalid service names
+    -     echo "Invalid service name: $service"
+    -   fi
+    - done
+  # Manual approval required to run the job
+  when: manual
+  # Allow the job to fail without failing the pipeline
+  allow_failure: true
+  # Run the job only on scheduled pipelines
+  only:
+    - schedules

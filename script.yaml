@@ -1,1 +1,4 @@
 echo "000000000000.dkr.ecr.us-gov-west-1.amazonaws.com/ab-cde/abc-public-ui:1.0.3-snapshot" | sed 's@.*\(\/.*\)\/\(.*\):.*@\1\/\2@'
+
+echo "000000000000.dkr.ecr.us-gov-west-1.amazonaws.com/ab-cde/abc-public-ui:1.0.3-snapshot" | sed 's@.*\(\/.*\)\/\(.*\):.*@\1\/\2@'
+

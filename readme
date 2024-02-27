@@ -1,0 +1,28 @@
+## Script Description
+
+### Overview
+The `delete_images` GitLab CI job is responsible for automatically deleting unused Docker image tags from AWS Elastic Container Registry (ECR) repositories based on ECS service usage. It ensures that only the image tags being actively used by ECS services are retained in the ECR repositories, helping to optimize storage and reduce costs.
+
+### Functionality
+1. **Retrieve ECS Services**: The script retrieves a list of ECS services running in the specified ECS cluster.
+
+2. **Retrieve Task Definitions**: For each ECS service, it retrieves the corresponding task definition, which defines the container images used by the service.
+
+3. **Extract Container Images**: It extracts the container images specified in each task definition.
+
+4. **Identify Unused Images**: For each container image, the script determines if it's being used by the corresponding ECS service. If not, it marks the image as unused and ready for deletion.
+
+5. **Delete Unused Images**: For each unused image, the script deletes all other image tags associated with the same repository in the ECR registry. This ensures that only the image tags being actively used by ECS services are retained, while removing any unused or obsolete image tags.
+
+6. **Automation and Manual Intervention**: The job is configured to run automatically without manual intervention whenever it's triggered by a schedule or any other configured condition. However, manual approval may be required to run the job, depending on the pipeline configuration.
+
+### Benefits
+- **Cost Optimization**: By regularly cleaning up unused Docker images, the script helps optimize storage costs associated with AWS ECR repositories.
+- **Resource Efficiency**: It ensures that only necessary image tags are retained, improving resource efficiency and reducing clutter in ECR repositories.
+- **Automated Maintenance**: The job automates the process of image cleanup, reducing the need for manual intervention and ensuring consistent maintenance of ECR repositories.
+
+### Usage
+To use the `delete_images` job:
+- Replace `"your-ecs-cluster-name"` with the name of your ECS cluster.
+- Configure the job to run automatically on scheduled pipelines or trigger it manually as needed.
+- Ensure that appropriate AWS credentials with necessary permissions are configured in GitLab CI/CD settings.

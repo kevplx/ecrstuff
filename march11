@@ -7,6 +7,8 @@ delete_images:
     AWS_DEFAULT_REGION: "$AWS_DEFAULT_REGION"
   script:
     - |
+      # Declare an array to store all unused image tags
+      unused_image_tags=()
       # Retrieve a list of ECS services in the specified cluster
       ecs_services=$(aws ecs list-services --cluster your-ecs-cluster-name --query 'serviceArns')
       # Extract ECS service names from the ARNs
@@ -35,13 +37,18 @@ delete_images:
           echo "Listing all other image tags for repository $repository_name not being used by ECS service $service"
           # Retrieve all image tags for the repository
           all_tags=$(aws ecr describe-images --repository-name "$repository_name" --query 'imageDetails[*].imageTags' --output json | jq -r '.[] | select(. != null) | .[]')
-          # List each tag except the one being used by the ECS service
+          # Add each unused tag to the array
           for tag in $all_tags; do
             if [[ "$tag" != "$image_name" ]]; then
-              echo "Unused image tag: $tag"
+              unused_image_tags+=("$tag")
             fi
           done
         done
+      done
+      # Output the list of unused image tags that are going to be deleted
+      echo "Unused image tags to be deleted:"
+      for unused_tag in "${unused_image_tags[@]}"; do
+        echo "- $unused_tag"
       done
   # Run the job automatically without manual intervention
   when: always

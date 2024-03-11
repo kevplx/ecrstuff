@@ -1,0 +1,56 @@
+delete_images:
+  stage: delete_images
+  image: python:3.9
+  variables:
+    AWS_ACCESS_KEY_ID: "$AWS_ACCESS_KEY_ID"
+    AWS_SECRET_ACCESS_KEY: "$AWS_SECRET_ACCESS_KEY"
+    AWS_DEFAULT_REGION: "$AWS_DEFAULT_REGION"
+  script:
+    - |
+      # Declare an array to store all unused image tags
+      unused_image_tags=()
+      # Retrieve a list of ECS services in the specified cluster
+      ecs_services=$(aws ecs list-services --cluster your-ecs-cluster-name --query 'serviceArns')
+      # Extract ECS service names from the ARNs
+      ecs_service_names=$(echo "$ecs_services" | jq -r '.[]' | awk -F'/' '{print $(NF-1)}')
+      # Output ECS service names for visibility
+      echo "ECS Services:"
+      for service in $ecs_service_names; do
+        echo "- $service"
+        # Retrieve task definition for the service
+        task_def=$(aws ecs describe-services --cluster your-ecs-cluster-name --services "$service" --query 'services[*].taskDefinition' | jq -r '.[0]')
+        # Retrieve container images from the task definition using jq
+        containers=$(aws ecs describe-task-definition --task-definition "$task_def" | jq -r '.taskDefinition.containerDefinitions[].image')
+        # Loop through each container image
+        for container in $containers; do
+          # Extract repository from the container image
+          repository=$(echo "$container" | cut -d '/' -f 1)
+          # Set repository name
+          repository_name=$repository
+          # Extract image name from the container image URL
+          image_name=$(basename "$container")
+          # Add each image tag to the array of used tags
+          used_image_tags+=("$image_name")
+        done
+      done
+      # Retrieve all image tags for the repository
+      all_tags=$(aws ecr describe-images --repository-name "$repository_name" --query 'imageDetails[*].imageTags' --output json | jq -r '.[] | select(. != null) | .[]')
+      # Iterate through each image tag and check if it's being used
+      for tag in $all_tags; do
+        # Check if the tag is not being used by any ECS service
+        if ! [[ "${used_image_tags[*]}" =~ "$tag" ]]; then
+          unused_image_tags+=("$tag")
+        fi
+      done
+      # Output the list of unused image tags that are going to be deleted
+      echo "Unused image tags to be deleted:"
+      for unused_tag in "${unused_image_tags[@]}"; do
+        echo "- $unused_tag"
+      done
+  # Run the job automatically without manual intervention
+  when: always
+  # Allow the job to fail without failing the pipeline
+  allow_failure: true
+  # Run the job only on scheduled pipelines
+  only:
+    - schedules

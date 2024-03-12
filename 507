@@ -1,0 +1,78 @@
+stages:
+  - list_image
+  - delete_unused_images
+
+list_image:
+  stage: list_image
+  script:
+    - export AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID"
+    - export AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY"
+    - export AWS_DEFAULT_REGION="$AWS_DEFAULT_REGION"
+    - |
+      ECR_NAMESPACE="kc-abc"
+      # Retrieve list of ECS services and their task definitions
+      echo "Retrieving ECS services and their task definitions..."
+      SERVICES=$(aws ecs list-services --cluster <your-ecs-cluster-name> --query "serviceArns[]" --output text --region <your-region>)
+      
+      # Create an array to store used images
+      USED_IMAGES=()
+
+      # Iterate over each service to retrieve the task definition
+      for SERVICE in $SERVICES; do
+          TASK_DEFINITION=$(aws ecs describe-services --cluster <your-ecs-cluster-name> --services $SERVICE --region <your-region> | jq -r ".services[].taskDefinition")
+          # Get repository and image tag information from task definitions
+          REPO_IMAGE_TAGS=$(aws ecs describe-task-definition --task-definition $TASK_DEFINITION --region <your-region> | jq -r '.taskDefinition.containerDefinitions[].image')
+          # Add repository and image tag to the array of used images
+          for REPO_IMAGE_TAG in $REPO_IMAGE_TAGS; do
+              USED_IMAGES+=("$REPO_IMAGE_TAG")
+          done
+      done
+      
+      # Output used images
+      echo "Used Images:"
+      for USED_IMAGE in "${USED_IMAGES[@]}"; do
+          echo "$USED_IMAGE"
+      done
+      
+      # Retrieve list of repositories in the ECR namespace
+      echo "Retrieving repository names in the ECR namespace..."
+      REPOS=$(aws ecr describe-repositories --repository-names $(aws ecr describe-repositories --query "repositories[].repositoryName" --output text) --query "repositories[].repositoryName" --output text | grep "^$ECR_NAMESPACE")
+      
+      # Create a file to store unused image tags
+      touch unused_images.txt
+      
+      # Iterate over each repository
+      for REPO in $REPOS; do
+          # Get list of image tags in the repository
+          echo "Retrieving image tags for repository: $REPO..."
+          IMAGE_TAGS=$(aws ecr list-images --repository-name $REPO --query 'imageIds[*].imageTag' --output text)
+          # If no image tags are present, set IMAGE_TAGS to "none"
+          if [[ -z "$IMAGE_TAGS" ]]; then
+              IMAGE_TAGS="none"
+          fi
+          # Iterate over each image tag
+          for IMAGE_TAG in $IMAGE_TAGS; do
+              # Check if the image tag is unused
+              if ! [[ " ${USED_IMAGES[@]} " =~ " $REPO:$IMAGE_TAG " ]]; then
+                  echo "Unused Image: $REPO:$IMAGE_TAG"
+                  # Append unused image to the output file
+                  echo "$REPO:$IMAGE_TAG" >> unused_images.txt
+              fi
+          done
+      done
+
+delete_unused_images:
+  stage: delete_unused_images
+  script:
+    - export AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID"
+    - export AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY"
+    - export AWS_DEFAULT_REGION="$AWS_DEFAULT_REGION"
+    - echo "Deleting unused images..."
+    - |
+      while IFS=: read -r REPO IMAGE_TAG; do
+        echo "Deleting image: $REPO:$IMAGE_TAG"
+        aws ecr batch-delete-image --repository-name $REPO --image-ids imageTag=$IMAGE_TAG --region <your-region>
+      done < unused_images.txt
+  artifacts:
+    paths:
+      - unused_images.txt

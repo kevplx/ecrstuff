@@ -1,0 +1,34 @@
+#!/bin/bash
+
+# Set AWS credentials and region
+export AWS_ACCESS_KEY_ID=<your-access-key-id>
+export AWS_SECRET_ACCESS_KEY=<your-secret-access-key>
+export AWS_DEFAULT_REGION=<your-region>
+
+# Set ECR namespace
+ECR_NAMESPACE="kc-abc"
+
+# Get list of repositories in the namespace
+REPOS=$(aws ecr describe-repositories --repository-names $(aws ecr describe-repositories --query "repositories[].repositoryName" --output text) --query "repositories[].repositoryName" --output text | grep "^$ECR_NAMESPACE")
+
+# Iterate over each repository
+for REPO in $REPOS; do
+    # Get list of image tags in the repository
+    IMAGE_TAGS=$(aws ecr list-images --repository-name $REPO --query 'imageIds[*]' --output json)
+
+    # Check if each image is being used by ECS tasks
+    for IMAGE_TAG in $IMAGE_TAGS; do
+        # Check if the image has no tag
+        if [[ "$IMAGE_TAG" == "null" ]]; then
+            IMAGE_TAG="none"
+        fi
+
+        # Check if the image is being used by ECS tasks
+        ECS_TASKS=$(aws ecs list-tasks --cluster <your-ecs-cluster-name> --query "taskArns[*]" --output text --region <your-region> | xargs -n 1 aws ecs describe-tasks --tasks | jq -r ".tasks[].containers[].image" | grep "$REPO:$IMAGE_TAG")
+
+        # If no ECS tasks are using the image, print it
+        if [[ -z "$ECS_TASKS" ]]; then
+            echo "Unused Image: $REPO:$IMAGE_TAG"
+        fi
+    done
+done

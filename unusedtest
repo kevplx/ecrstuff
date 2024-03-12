@@ -14,8 +14,9 @@ list_image:
       echo "Retrieving ECS services and their task definitions..."
       SERVICES=$(aws ecs list-services --cluster <your-ecs-cluster-name> --query "serviceArns[]" --output text --region <your-region>)
       
-      # Create an array to store used images
+      # Create arrays to store used and unused images
       USED_IMAGES=()
+      UNUSED_IMAGES=()
 
       # Iterate over each service to retrieve the task definition
       for SERVICE in $SERVICES; do
@@ -53,6 +54,8 @@ list_image:
                   echo "Unused Image: $REPO:$IMAGE_TAG"
                   # Append unused image to the output file
                   echo "$REPO:$IMAGE_TAG" >> unused_images.txt
+              else
+                  echo "Used Image: $REPO:$IMAGE_TAG"
               fi
           done
       done

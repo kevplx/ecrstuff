@@ -76,3 +76,11 @@ delete_unused_images:
   artifacts:
     paths:
       - unused_images.txt
+
+
+ # Extract repository name and image tag
+    for REPO_IMAGE_TAG in $REPO_IMAGE_TAGS; do
+        REPO=$(echo $REPO_IMAGE_TAG | cut -d "/" -f 2 | cut -d ":" -f 1)
+        IMAGE_TAG=$(echo $REPO_IMAGE_TAG | cut -d ":" -f 2)
+        USED_IMAGES+=("$REPO:$IMAGE_TAG")
+    done

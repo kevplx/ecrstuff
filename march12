@@ -164,4 +164,30 @@ list_image:
           done
       done
 
+## optimized
+stages:
+  - list_image
+
+list_image:
+  stage: list_image
+  script:
+    - export AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID"
+    - export AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY"
+    - export AWS_DEFAULT_REGION="$AWS_DEFAULT_REGION"
+    - |
+      ECR_NAMESPACE="kc-abc"
+      # Retrieve list of ECS services and their task definitions
+      echo "Retrieving ECS services and their task definitions..."
+      SERVICES=$(aws ecs list-services --cluster <your-ecs-cluster-name> --query "serviceArns[]" --output text --region <your-region>)
+      for SERVICE in $SERVICES; do
+          TASK_DEFINITION=$(aws ecs describe-services --cluster <your-ecs-cluster-name> --services $SERVICE --region <your-region> | jq -r ".services[].taskDefinition")
+          # Get repository and image tag information from task definitions
+          REPO_IMAGE_TAGS=$(aws ecs describe-task-definition --task-definition $TASK_DEFINITION --region <your-region> | jq -r '.taskDefinition.containerDefinitions[].image')
+          # Check if the image tag is present in the task definition
+          for REPO_IMAGE_TAG in $REPO_IMAGE_TAGS; do
+              REPO=$(echo $REPO_IMAGE_TAG | cut -d ":" -f 1)
+              IMAGE_TAG=$(echo $REPO_IMAGE_TAG | cut -d ":" -f 2)
+              echo "Used Image: $REPO:$IMAGE_TAG"
+          done
+      done
 

@@ -25,3 +25,6 @@ done
 
 
 IMAGE_TAGS=$(aws ecr list-images --repository-name $REPO --query "imageIds[?ends_with(@, '-SNAPSHOT') || ends_with(@, '-RELEASE')].imageTag" --output text)
+
+          FILTERED_IMAGE_TAGS=$(echo "$IMAGE_TAGS" | grep -E '[-](SNAPSHOT|RELEASE)$')
+

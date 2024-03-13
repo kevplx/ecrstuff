@@ -22,3 +22,6 @@ for REPO in $REPOS; do
         done
     done
 done
+
+
+IMAGE_TAGS=$(aws ecr list-images --repository-name $REPO --query "imageIds[?ends_with(@, '-SNAPSHOT') || ends_with(@, '-RELEASE')].imageTag" --output text)

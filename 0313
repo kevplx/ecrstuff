@@ -1,0 +1,24 @@
+# Iterate over each repository
+for REPO in $REPOS; do
+    # Get list of image tags in the repository
+    echo "Retrieving image tags for repository: $REPO..."
+    IMAGE_TAGS=$(aws ecr list-images --repository-name $REPO --query 'imageIds[*].imageTag' --output text)
+    # If no image tags are present, set IMAGE_TAGS to "none"
+    if [[ -z "$IMAGE_TAGS" ]]; then
+        IMAGE_TAGS="none"
+    fi
+    # Iterate over each image tag
+    for FULL_IMAGE_TAG in $IMAGE_TAGS; do
+        # Split the full image tag into separate tags based on comma delimiter
+        IFS=',' read -r -a IMAGE_TAG_ARRAY <<< "$FULL_IMAGE_TAG"
+        # Iterate over each separated image tag
+        for IMAGE_TAG in "${IMAGE_TAG_ARRAY[@]}"; do
+            # Check if the image tag is unused
+            if ! [[ " ${USED_IMAGES[@]} " =~ " $REPO:$IMAGE_TAG " ]]; then
+                echo "Unused Image: $REPO:$IMAGE_TAG"
+                # Append unused image to the output file
+                echo "$REPO:$IMAGE_TAG" >> unused_images.txt
+            fi
+        done
+    done
+done

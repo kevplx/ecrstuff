@@ -35,3 +35,50 @@ list_image:
               fi
           done <<< "$IMAGE_TAGS"
       done
+
+
+stages:
+  - list_image
+
+list_image:
+  stage: list_image
+  script:
+    - export AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID"
+    - export AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY"
+    - export AWS_DEFAULT_REGION="$AWS_DEFAULT_REGION"
+    - |
+      ECR_NAMESPACE="kc-abc"
+      REPOS=$(aws ecr describe-repositories --repository-names $(aws ecr describe-repositories --query "repositories[].repositoryName" --output text) --query "repositories[].repositoryName" --output text | grep "^$ECR_NAMESPACE")
+      for REPO in $REPOS; do
+          # Get list of image tags in the repository
+          echo "Retrieving image tags for repository: $REPO..."
+          IMAGE_TAGS=$(aws ecr list-images --repository-name $REPO --query 'imageIds[*].imageTag' --output text)
+          # If no image tags are present, set IMAGE_TAGS to "none"
+          if [[ -z "$IMAGE_TAGS" ]]; then
+              IMAGE_TAGS="none"
+          fi
+          # Create an array to store the modified tags
+          MODIFIED_TAGS=()
+          # Prepend the repository name to each image tag
+          while read -r IMAGE_TAG; do
+              MODIFIED_TAGS+=("$REPO/$IMAGE_TAG")
+          done <<< "$IMAGE_TAGS"
+          # Write all modified tags to repo_image_tags.txt
+          printf "%s\n" "${MODIFIED_TAGS[@]}" > "$CI_JOB_NAME-repo_image_tags.txt"
+          # Iterate over each image tag
+          for IMAGE_TAG in $IMAGE_TAGS; do
+              # Check if the image tag ends with -SNAPSHOT or -RELEASE
+              if [[ "$IMAGE_TAG" == *-SNAPSHOT || "$IMAGE_TAG" == *-RELEASE ]]; then
+                  # Check if the image tag is unused
+                  if ! [[ " ${USED_IMAGES[@]} " =~ " $REPO:$IMAGE_TAG " ]]; then
+                      echo "Unused Image: $REPO:$IMAGE_TAG"
+                      # Append unused image to the output file
+                      echo "$REPO:$IMAGE_TAG" >> unused_images.txt
+                  fi
+              fi
+          done
+      done
+
+  artifacts:
+    paths:
+      - "$CI_JOB_NAME-repo_image_tags.txt"

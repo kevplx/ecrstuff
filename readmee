@@ -4,11 +4,24 @@ This GitLab CI/CD pipeline automates the cleanup of unused Amazon Elastic Contai
 
 ## List Image Stage
 
-In this stage (`list_image`), the pipeline retrieves all image tags for each repository in the specified ECR namespace. It identifies the unused image tags, which are those ending with `-SNAPSHOT` or `-RELEASE` and not being used by any running ECS tasks. The unused image tags are stored in the `unused_images.txt` file, while all image tags for each repository are stored in the `repo_image_tags.txt` file.
+In the `list_image` stage, the pipeline performs the following tasks:
+
+- Retrieves a list of all repositories in the specified ECR namespace.
+- For each repository, retrieves all image tags.
+- Identifies the unused image tags, which are those ending with `-SNAPSHOT` or `-RELEASE` and not being used by any running ECS tasks.
+- Stores the unused image tags in the `unused_images.txt` file.
+- Stores all image tags for each repository in the `repo_image_tags.txt` file, including those that are used.
+
+This stage provides visibility into all image tags in the ECR repositories and identifies which ones are no longer in use.
 
 ## Delete Unused Images Stage
 
-In the `delete_unused_images` stage, the pipeline reads the `unused_images.txt` file and deletes all the corresponding image tags from the respective repositories in the ECR namespace. This helps clean up the ECR repositories by removing unused image tags, thereby optimizing storage usage.
+In the `delete_unused_images` stage, the pipeline performs the following tasks:
+
+- Reads the `unused_images.txt` file generated in the previous stage.
+- Deletes all the corresponding unused image tags from the respective repositories in the ECR namespace.
+
+This stage helps clean up the ECR repositories by removing unused image tags, thereby optimizing storage usage and ensuring a more efficient container image management process.
 
 ### Note
 

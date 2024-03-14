@@ -1,0 +1,18 @@
+# ECR Image Cleanup Pipeline
+
+This GitLab CI/CD pipeline automates the cleanup of unused Amazon Elastic Container Registry (ECR) images. It consists of two stages:
+
+## List Image Stage
+
+In this stage (`list_image`), the pipeline retrieves all image tags for each repository in the specified ECR namespace. It identifies the unused image tags, which are those ending with `-SNAPSHOT` or `-RELEASE` and not being used by any running ECS tasks. The unused image tags are stored in the `unused_images.txt` file, while all image tags for each repository are stored in the `repo_image_tags.txt` file.
+
+## Delete Unused Images Stage
+
+In the `delete_unused_images` stage, the pipeline reads the `unused_images.txt` file and deletes all the corresponding image tags from the respective repositories in the ECR namespace. This helps clean up the ECR repositories by removing unused image tags, thereby optimizing storage usage.
+
+### Note
+
+- Ensure that appropriate AWS credentials are configured as environment variables in the GitLab CI/CD settings.
+- The AWS CLI must be installed and configured with the necessary permissions to interact with ECR.
+- Adjust the ECR namespace (`ECR_NAMESPACE`) and any other parameters as per your specific setup.
+

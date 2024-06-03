@@ -1,0 +1,36 @@
+stages:
+  - upload-and-unzip
+
+upload_to_s3:
+  stage: upload-and-unzip
+  image: amazon/aws-cli:2.2.7
+  script:
+    # Variables
+    - ZIP_FOLDER_PATH="path/to/your/zipfile.zip"  # Replace with the actual path to your zip file
+    - S3_BUCKET="your-s3-bucket-name"  # Replace with your S3 bucket name
+    - S3_KEY="your-folder-in-s3/zipfile.zip"  # Replace with the desired S3 key
+    - UNZIP_FOLDER_PATH="path/to/unzip/folder"  # Replace with the desired unzip location
+
+    # Ensure the zip folder exists
+    - |
+      if [ ! -f "$ZIP_FOLDER_PATH" ]; then
+        echo "Zip file not found at $ZIP_FOLDER_PATH"
+        exit 1
+      fi
+
+    # Upload the zip file to S3
+    - aws s3 cp "$ZIP_FOLDER_PATH" "s3://$S3_BUCKET/$S3_KEY"
+
+    # Download the zip file from S3 to the unzip folder
+    - aws s3 cp "s3://$S3_BUCKET/$S3_KEY" "$UNZIP_FOLDER_PATH"
+
+    # Unzip the file in the unzip folder
+    - unzip "$UNZIP_FOLDER_PATH/$(basename $ZIP_FOLDER_PATH)" -d "$UNZIP_FOLDER_PATH"
+
+    # Optional: Cleanup the zip file after unzipping
+    - rm "$UNZIP_FOLDER_PATH/$(basename $ZIP_FOLDER_PATH)"
+
+  only:
+    - branches
+  tags:
+    - your-gitlab-runner-tag  # Replace with the tag of your GitLab runner

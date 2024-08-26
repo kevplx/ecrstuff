@@ -1,0 +1,27 @@
+stages:
+  - deploy
+
+deploy_to_endpoint:
+  stage: deploy
+  script:
+    # Step 1: Retrieve the Base64-encoded certificate and password from AWS Secrets Manager
+    - echo "Fetching certificate and password from AWS Secrets Manager..."
+    - export CERT_BASE64=$(aws secretsmanager get-secret-value --secret-id my-cert-secret --query SecretString --output text | jq -r '.certificate')
+    - export CERT_PASSWORD=$(aws secretsmanager get-secret-value --secret-id my-cert-secret --query SecretString --output text | jq -r '.password')
+
+    # Step 2: Decode the Base64 certificate and convert it to .pem format
+    - echo "Decoding Base64 certificate and converting to .pem format..."
+    - echo "$CERT_BASE64" | base64 -d > certificate.p12
+    - openssl pkcs12 -in certificate.p12 -out certificate.pem -nodes -password pass:$CERT_PASSWORD
+
+    # Step 3: Push a file to the secure transport endpoint using the .pem certificate
+    - echo "Pushing file to secure transport endpoint..."
+    - curl --cert certificate.pem --key certificate.pem --pass "$CERT_PASSWORD" -F "file=@path/to/your/file.txt" https://your-secure-endpoint.com/upload
+
+  only:
+    - main
+
+# Replace the following:
+# - `my-cert-secret` with the actual name of your secret in AWS Secrets Manager.
+# - `path/to/your/file.txt` with the path to the file you want to upload.
+# - `https://your-secure-endpoint.com/upload` with the actual endpoint URL.

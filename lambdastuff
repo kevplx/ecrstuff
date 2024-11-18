@@ -1,0 +1,69 @@
+stages:
+  - deploy
+  - test
+  - cleanup
+
+variables:
+  LAMBDA_FUNCTION_NAME: "temp-curl-lambda"
+  AWS_REGION: "us-east-1"
+  RUNTIME: "python3.9"
+
+deploy_lambda:
+  stage: deploy
+  script:
+    - echo "Creating Lambda function..."
+    # Create the Lambda function
+    - |
+      cat > lambda_handler.py << EOF
+      import os
+      import subprocess
+
+      def lambda_handler(event, context):
+          curl_command = event.get('command', 'curl --help')
+          result = subprocess.run(curl_command, shell=True, capture_output=True, text=True)
+          return {
+              'statusCode': result.returncode,
+              'stdout': result.stdout,
+              'stderr': result.stderr
+          }
+      EOF
+
+    - zip function.zip lambda_handler.py
+    - |
+      aws lambda create-function \
+        --function-name $LAMBDA_FUNCTION_NAME \
+        --runtime $RUNTIME \
+        --role arn:aws:iam::<account_id>:role/<lambda_execution_role> \
+        --handler lambda_handler.lambda_handler \
+        --zip-file fileb://function.zip \
+        --region $AWS_REGION
+    - echo "Lambda function deployed."
+
+test_lambda:
+  stage: test
+  script:
+    - echo "Running curl commands in Lambda..."
+    - |
+      PAYLOAD=$(cat <<EOF
+      {
+        "command": "curl -I https://example.com"
+      }
+      EOF
+      )
+    - RESPONSE=$(aws lambda invoke \
+        --function-name $LAMBDA_FUNCTION_NAME \
+        --payload "$PAYLOAD" \
+        response.json \
+        --region $AWS_REGION)
+    - cat response.json
+    - echo "Response from Lambda: $(cat response.json)"
+
+cleanup_lambda:
+  stage: cleanup
+  script:
+    - echo "Cleaning up Lambda function..."
+    - |
+      aws lambda delete-function \
+        --function-name $LAMBDA_FUNCTION_NAME \
+        --region $AWS_REGION
+    - echo "Lambda function cleaned up."

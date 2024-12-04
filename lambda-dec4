@@ -1,0 +1,19 @@
+import json
+import requests
+
+def lambda_handler(event, context):
+    # Get URL from the event or use a default
+    url = event.get("url", "https://example.com")
+    
+    try:
+        # Perform the HTTP GET request
+        response = requests.get(url)
+        return {
+            "statusCode": response.status_code,
+            "body": response.text
+        }
+    except requests.exceptions.RequestException as e:
+        return {
+            "statusCode": 500,
+            "error": str(e)
+        }

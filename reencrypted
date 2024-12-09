@@ -1,0 +1,41 @@
+resource "aws_s3_bucket_server_side_encryption_configuration" "state_bucket" {
+  bucket = var.bucket_name
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = var.kms_key_id
+    }
+  }
+}
+
+resource "aws_s3_bucket_versioning" "state_bucket_versioning" {
+  bucket = var.bucket_name
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "state_bucket" {
+  bucket = var.bucket_name
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = var.kms_key_id
+    }
+  }
+}
+
+resource "aws_s3_bucket_versioning" "state_bucket_versioning" {
+  bucket = var.bucket_name
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+
+
+##variables

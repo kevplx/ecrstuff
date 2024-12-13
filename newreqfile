@@ -1,0 +1,16 @@
+import urllib.request
+
+def lambda_handler(event, context):
+    url = event.get("url", "https://example.com")
+    try:
+        with urllib.request.urlopen(url) as response:
+            response_data = response.read().decode("utf-8")
+            return {
+                "statusCode": response.status,
+                "body": response_data
+            }
+    except Exception as e:
+        return {
+            "statusCode": 500,
+            "error": str(e)
+        }

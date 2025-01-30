@@ -4,30 +4,42 @@ stages:
 
 variables:
   AWS_REGION: "us-west-2"
+  CURRENT_ENV: "qac"  # This will be dynamically set based on the environment (e.g., dev, test, prod)
 
+# Prepare stage: Query AWS Secrets Manager, download Secure Files and unzip them
 prepare_files:
   stage: prepare
   script:
-    - echo "Downloading Secure Files"
-    # Download the zipped file and password from Secure Files
-    - gitlab-ci-download-secure-file "xyz.QA.TO.${CI_COMMIT_REF_NAME}.zip"
-    - gitlab-ci-download-secure-file "xyz.QA.TO.${CI_COMMIT_REF_NAME}.password.txt"
-    - unzip "xyz.QA.TO.${CI_COMMIT_REF_NAME}.zip" -d "certificates/${CI_COMMIT_REF_NAME}/"
-    - cat "certificates/${CI_COMMIT_REF_NAME}/xyz.QA.TO.${CI_COMMIT_REF_NAME}.password.txt"
+    - echo "Preparing files and secrets"
+    
+    # Query AWS Secrets Manager to get all secrets starting with "my-sectrans-"
+    - echo "Querying AWS Secrets Manager for secrets starting with 'my-sectrans-'"
+    - |
+      SECRETS=$(aws secretsmanager list-secrets --query "SecretList[?Name.starts_with(@, 'my-sectrans-')].Name" --output text)
+      echo "Secrets found: $SECRETS"
+    
+    # Loop through the secrets and process each one
+    - |
+      for secret_name in $SECRETS; do
+        # Extract folder name (e.g., "ABC" from "my-sectrans-qac.QA.TO.ABC")
+        folder=$(echo $secret_name | sed -E 's/my-sectrans-[^\.]+\.(QA|DEV|PROD)\.TO\.(.*)/\2/')
+        
+        # Construct the GitLab variable name for the password (e.g., QAC_QA_TO_ABC)
+        password_var="${CURRENT_ENV}_QA_TO_${folder//./_}"
+        echo "Retrieving password for ${password_var}"
+        
+        # Fetch the password from GitLab CI/CD variables
+        PASSWORD=$(echo "${password_var}" | xargs -I {} echo "$CI_VARIABLES_{})")
+        echo "Password retrieved for ${folder}"
 
-process_certificate:
-  stage: process
-  script:
-    - echo "Processing certificate for folder ${CI_COMMIT_REF_NAME}"
-    
-    # Assuming the password is stored in a variable or Secure Files, fetch it
-    - PASSWORD=$(cat "certificates/${CI_COMMIT_REF_NAME}/xyz.QA.TO.${CI_COMMIT_REF_NAME}.password.txt")
-    
-    # Assuming you're using AWS CLI or SDK to interact with AWS Secrets Manager:
-    - echo "Converting .pk12 certificate to base64"
-    - BASE64_CERTIFICATE=$(openssl pkcs12 -in "certificates/${CI_COMMIT_REF_NAME}/xyz.QA.TO.${CI_COMMIT_REF_NAME}.pk12" -passin pass:$PASSWORD -out certificate.pem -nodes)
-    - BASE64_CERTIFICATE=$(base64 -w 0 certificate.pem)
-    
-    # Update the secret in AWS Secrets Manager
-    - echo "Updating AWS Secrets Manager with the certificate and password"
-    - aws secretsmanager update-secret --secret-id "my-ric-sectrans-secret-${CI_COMMIT_REF_NAME}.TO.${CI_COMMIT_REF_NAME}" --secret-string '{"certificate":"'"$BASE64_CERTIFICATE"'", "password":"'"$PASSWORD"'"}'
+        # Construct the Secure Files zip name (e.g., QAC.QA.TO.ABC.zip)
+        zip_file_name="${CURRENT_ENV}.QA.TO.${folder}.zip"
+        echo "Downloading zip file: ${zip_file_name}"
+
+        # Download the zipped file from GitLab Secure Files
+        gitlab-ci-download-secure-file "$zip_file_name"
+        
+        # Unzip the downloaded certificate file
+        unzip "$zip_file_name" -d "certificates/${folder}/"
+        echo "Unzipped certificate for ${folder}"
+      done

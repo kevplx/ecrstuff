@@ -1,0 +1,33 @@
+stages:
+  - prepare
+  - process
+
+variables:
+  AWS_REGION: "us-west-2"
+
+prepare_files:
+  stage: prepare
+  script:
+    - echo "Downloading Secure Files"
+    # Download the zipped file and password from Secure Files
+    - gitlab-ci-download-secure-file "xyz.QA.TO.${CI_COMMIT_REF_NAME}.zip"
+    - gitlab-ci-download-secure-file "xyz.QA.TO.${CI_COMMIT_REF_NAME}.password.txt"
+    - unzip "xyz.QA.TO.${CI_COMMIT_REF_NAME}.zip" -d "certificates/${CI_COMMIT_REF_NAME}/"
+    - cat "certificates/${CI_COMMIT_REF_NAME}/xyz.QA.TO.${CI_COMMIT_REF_NAME}.password.txt"
+
+process_certificate:
+  stage: process
+  script:
+    - echo "Processing certificate for folder ${CI_COMMIT_REF_NAME}"
+    
+    # Assuming the password is stored in a variable or Secure Files, fetch it
+    - PASSWORD=$(cat "certificates/${CI_COMMIT_REF_NAME}/xyz.QA.TO.${CI_COMMIT_REF_NAME}.password.txt")
+    
+    # Assuming you're using AWS CLI or SDK to interact with AWS Secrets Manager:
+    - echo "Converting .pk12 certificate to base64"
+    - BASE64_CERTIFICATE=$(openssl pkcs12 -in "certificates/${CI_COMMIT_REF_NAME}/xyz.QA.TO.${CI_COMMIT_REF_NAME}.pk12" -passin pass:$PASSWORD -out certificate.pem -nodes)
+    - BASE64_CERTIFICATE=$(base64 -w 0 certificate.pem)
+    
+    # Update the secret in AWS Secrets Manager
+    - echo "Updating AWS Secrets Manager with the certificate and password"
+    - aws secretsmanager update-secret --secret-id "my-ric-sectrans-secret-${CI_COMMIT_REF_NAME}.TO.${CI_COMMIT_REF_NAME}" --secret-string '{"certificate":"'"$BASE64_CERTIFICATE"'", "password":"'"$PASSWORD"'"}'

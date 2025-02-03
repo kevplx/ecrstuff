@@ -6,27 +6,27 @@ variables:
   AWS_REGION: "us-west-2"
   CURRENT_ENV: "qac"  # This will be dynamically set based on the environment (e.g., dev, test, prod)
 
-# Prepare stage: Query AWS Secrets Manager, download Secure Files and unzip them
+# Prepare stage: Query AWS Secrets Manager, download Secure Files, and unzip them
 prepare_files:
   stage: prepare
   script:
     - echo "Preparing files and secrets"
     
-    # Query AWS Secrets Manager to get all secrets starting with "my-sectrans-"
-    - echo "Querying AWS Secrets Manager for secrets starting with 'my-sectrans-'"
+    # Query AWS Secrets Manager to get all secrets starting with "dc-ric-sectrans-secret-"
+    - echo "Querying AWS Secrets Manager for secrets starting with 'dc-ric-sectrans-secret-'"
     - |
-      # Get all secrets that start with 'my-sectrans-' and format the output using jq
-      SECRETS=$(aws secretsmanager list-secrets --query "SecretList[?Name.starts_with(@, 'my-sectrans-')].Name" --output json)
+      # Get all secrets that start with 'dc-ric-sectrans-secret-' and format the output using jq
+      SECRETS=$(aws secretsmanager list-secrets --query "SecretList[?Name.starts_with(@, 'dc-ric-sectrans-secret-')].Name" --output json)
       echo "Secrets found:"
       
-      # Use jq to format and list each secret in a readable way
+      # Use jq to format and list each secret in a readable way (one per line)
       echo "$SECRETS" | jq -r '.[]'  # This will output each secret on a new line
 
     # Loop through the secrets and process each one
     - |
       for secret_name in $(echo "$SECRETS" | jq -r '.[]'); do
-        # Extract folder name (e.g., "ABC" from "my-sectrans-qac.QA.TO.ABC")
-        folder=$(echo $secret_name | sed -E 's/my-sectrans-[^\.]+\.(QA|DEV|PROD)\.TO\.(.*)/\2/')
+        # Extract folder name (e.g., "ABC" from "dc-ric-sectrans-secret-qac.QA.TO.ABC")
+        folder=$(echo $secret_name | sed -E 's/dc-ric-sectrans-secret-[^\.]+\.(QA|DEV|PROD)\.TO\.(.*)/\2/')
         
         # Construct the GitLab variable name for the password (e.g., QAC_QA_TO_ABC)
         password_var="${CURRENT_ENV}_QA_TO_${folder//./_}"

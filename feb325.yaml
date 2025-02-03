@@ -1,0 +1,49 @@
+stages:
+  - prepare
+  - process
+
+variables:
+  AWS_REGION: "us-west-2"
+  CURRENT_ENV: "qac"  # This will be dynamically set based on the environment (e.g., dev, test, prod)
+
+# Prepare stage: Query AWS Secrets Manager, download Secure Files and unzip them
+prepare_files:
+  stage: prepare
+  script:
+    - echo "Preparing files and secrets"
+    
+    # Query AWS Secrets Manager to get all secrets starting with "my-sectrans-"
+    - echo "Querying AWS Secrets Manager for secrets starting with 'my-sectrans-'"
+    - |
+      # Get all secrets that start with 'my-sectrans-' and format the output using jq
+      SECRETS=$(aws secretsmanager list-secrets --query "SecretList[?Name.starts_with(@, 'my-sectrans-')].Name" --output json)
+      echo "Secrets found:"
+      
+      # Use jq to format and list each secret in a readable way
+      echo "$SECRETS" | jq -r '.[]'  # This will output each secret on a new line
+
+    # Loop through the secrets and process each one
+    - |
+      for secret_name in $(echo "$SECRETS" | jq -r '.[]'); do
+        # Extract folder name (e.g., "ABC" from "my-sectrans-qac.QA.TO.ABC")
+        folder=$(echo $secret_name | sed -E 's/my-sectrans-[^\.]+\.(QA|DEV|PROD)\.TO\.(.*)/\2/')
+        
+        # Construct the GitLab variable name for the password (e.g., QAC_QA_TO_ABC)
+        password_var="${CURRENT_ENV}_QA_TO_${folder//./_}"
+        echo "Retrieving password for ${password_var}"
+        
+        # Fetch the password from GitLab CI/CD variables
+        PASSWORD=$CI_VARIABLES_$password_var
+        echo "Password retrieved for ${folder}"
+
+        # Construct the Secure Files zip name (e.g., QAC.QA.TO.ABC.zip)
+        zip_file_name="${CURRENT_ENV}.QA.TO.${folder}.zip"
+        echo "Downloading zip file: ${zip_file_name}"
+
+        # Download the zipped file from GitLab Secure Files
+        gitlab-ci-download-secure-file "$zip_file_name"
+        
+        # Unzip the downloaded certificate file
+        unzip "$zip_file_name" -d "certificates/${folder}/"
+        echo "Unzipped certificate for ${folder}"
+      done

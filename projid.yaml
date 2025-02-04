@@ -3,3 +3,7 @@
 
         # Get the file ID for the zip file from GitLab Secure Files
         FILE_ID=$(curl --header "PRIVATE-TOKEN: $CI_JOB_TOKEN" "$GITLAB_API_URL/api/v4/projects/$PROJECT_ID/uploads" | jq -r '.[] | select(.path | contains("'${zip_file_name}'")) | .id')
+
+
+curl --header "PRIVATE-TOKEN: $CI_JOB_TOKEN" --output "$zip_file_name" "$GITLAB_API_URL/api/v4/projects/$PROJECT_ID/uploads/$FILE_ID"
+          echo "Downloaded zip file: ${zip_file_name}"

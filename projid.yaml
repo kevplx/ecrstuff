@@ -1,0 +1,5 @@
+# Get Project ID (if needed for API calls)
+        PROJECT_ID=$(curl --header "PRIVATE-TOKEN: $CI_JOB_TOKEN" "$GITLAB_API_URL/api/v4/projects?search=your_project_name" | jq -r '.[0].id')
+
+        # Get the file ID for the zip file from GitLab Secure Files
+        FILE_ID=$(curl --header "PRIVATE-TOKEN: $CI_JOB_TOKEN" "$GITLAB_API_URL/api/v4/projects/$PROJECT_ID/uploads" | jq -r '.[] | select(.path | contains("'${zip_file_name}'")) | .id')

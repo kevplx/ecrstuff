@@ -12,7 +12,7 @@ prepare_files:
   stage: prepare
   script:
     - echo "Preparing files and secrets"
-    
+
     # Query AWS Secrets Manager to get all secrets starting with "dc-ric-sectrans-secret-"
     - echo "Querying AWS Secrets Manager for secrets starting with 'dc-ric-sectrans-secret-'"
     - |
@@ -42,47 +42,45 @@ prepare_files:
           echo "Password retrieved for ${folder}"
         fi
 
-        # Construct the Secure Files zip name (e.g., QAC.QA.TO.ABC.zip)
-        zip_file_name="${CURRENT_ENV}.QA.TO.${folder}.zip"
-        echo "Downloading zip file: ${zip_file_name}"
+        # Download all zip files from GitLab Secure Files
+        echo "Downloading all zip files from GitLab Secure Files"
 
         # Get Project ID (if needed for API calls)
         PROJECT_ID=$(curl --header "PRIVATE-TOKEN: $CI_JOB_TOKEN" "$GITLAB_API_URL/api/v4/projects?search=your_project_name" | jq -r '.[0].id')
 
-        # Get the file ID for the zip file from GitLab Secure Files
-        FILE_ID=$(curl --header "PRIVATE-TOKEN: $CI_JOB_TOKEN" "$GITLAB_API_URL/api/v4/projects/$PROJECT_ID/uploads" | jq -r '.[] | select(.path | contains("'${zip_file_name}'")) | .id')
+        # Get all file IDs for the zip files in Secure Files
+        FILE_IDS=$(curl --header "PRIVATE-TOKEN: $CI_JOB_TOKEN" "$GITLAB_API_URL/api/v4/projects/$PROJECT_ID/uploads" | jq -r '.[] | select(.path | contains(".zip")) | .id')
 
-        # Download the zip file if it exists
-        if [ -z "$FILE_ID" ]; then
-          echo "No zip file found matching ${zip_file_name}, skipping..."
-          continue  # Skip to the next secret
-        else
-          curl --header "PRIVATE-TOKEN: $CI_JOB_TOKEN" --output "$zip_file_name" "$GITLAB_API_URL/api/v4/projects/$PROJECT_ID/uploads/$FILE_ID"
-          echo "Downloaded zip file: ${zip_file_name}"
-        fi
-        
-        # Unzip the downloaded certificate files
-        unzip "$zip_file_name" -d "certificates/${folder}/"
-        echo "Unzipped certificate files for ${folder}"
+        # Loop through each file ID to download the zip files
+        for FILE_ID in $FILE_IDS; do
+          echo "Downloading zip file with file ID: ${FILE_ID}"
 
-        # Process and rename the certificates based on the naming convention
-        for cert_file in certificates/${folder}/*.p12; do
-          if [[ "$cert_file" == *"cdric"* ]]; then
-            new_name="qac${cert_file#*.}"
-            mv "$cert_file" "certificates/${folder}/$new_name"
-            echo "Renamed $cert_file to $new_name"
-          elif [[ "$cert_file" == *"cdrice"* ]]; then
-            new_name="qae${cert_file#*.}"
-            mv "$cert_file" "certificates/${folder}/$new_name"
-            echo "Renamed $cert_file to $new_name"
-          elif [[ "$cert_file" == *"cdricf"* ]]; then
-            new_name="qaf${cert_file#*.}"
-            mv "$cert_file" "certificates/${folder}/$new_name"
-            echo "Renamed $cert_file to $new_name"
-          fi
+          curl --header "PRIVATE-TOKEN: $CI_JOB_TOKEN" --output "certificate_${FILE_ID}.zip" "$GITLAB_API_URL/api/v4/projects/$PROJECT_ID/uploads/$FILE_ID"
+          echo "Downloaded zip file: certificate_${FILE_ID}.zip"
+          
+          # Unzip the downloaded certificate files
+          unzip "certificate_${FILE_ID}.zip" -d "certificates/${folder}/"
+          echo "Unzipped certificate files for ${folder}"
+
+          # Process and rename the certificates based on the naming convention
+          for cert_file in certificates/${folder}/*.p12; do
+            if [[ "$cert_file" == *"cdric"* ]]; then
+              new_name="qac${cert_file#*.}"
+              mv "$cert_file" "certificates/${folder}/$new_name"
+              echo "Renamed $cert_file to $new_name"
+            elif [[ "$cert_file" == *"cdrice"* ]]; then
+              new_name="qae${cert_file#*.}"
+              mv "$cert_file" "certificates/${folder}/$new_name"
+              echo "Renamed $cert_file to $new_name"
+            elif [[ "$cert_file" == *"cdricf"* ]]; then
+              new_name="qaf${cert_file#*.}"
+              mv "$cert_file" "certificates/${folder}/$new_name"
+              echo "Renamed $cert_file to $new_name"
+            fi
+          done
+
+          # Echo the list of renamed certificate files
+          echo "Renamed certificate files for ${folder}:"
+          ls certificates/${folder}
         done
-
-        # Echo the list of renamed certificate files
-        echo "Renamed certificate files for ${folder}:"
-        ls certificates/${folder}
       done

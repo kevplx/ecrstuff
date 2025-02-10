@@ -1,0 +1,65 @@
+push_to_aws:
+  stage: push_to_aws
+  script:
+    - echo "Pushing certificates and passwords to AWS Secrets Manager..."
+
+    # Define the AWS secret name pattern
+    secret_name_prefix="my-sectrans-${CURRENT_ENV}.TO."
+
+    # Get the list of all AWS secret names that start with our pattern
+    secret_names=$(aws secretsmanager list-secrets --query 'SecretList[?Name.startsWith(@, `my-sectrans-`) == `true`].Name' --output text)
+
+    if [ -z "$secret_names" ]; then
+      echo "No secrets found in AWS Secrets Manager. Exiting..."
+      exit 1  # Exit if no secrets are found
+    fi
+
+    # Iterate through each secret in AWS Secrets Manager
+    for secret_name in $secret_names; do
+      echo "Processing secret: $secret_name"
+
+      # Extract the folder name from the secret name (e.g., 'ABC' from 'my-sectrans-dev.TO.ABC')
+      folder=$(echo $secret_name | sed -E 's/my-sectrans-[^\.]+\.(QA|DEV|PROD)\.TO\.(.*)/\2/')
+      echo "Found folder name: $folder"
+
+      # Construct the password variable name
+      password_var="${secret_name#my-sectrans-}"
+      password_var="${password_var//./_}"  # Replace dots with underscores for GitLab variable names
+
+      # Fetch the password from GitLab CI/CD environment variables
+      password="${!password_var}"
+      
+      if [ -z "$password" ]; then
+        echo "No password found matching $password_var for $secret_name. Skipping secret push."
+        continue  # Skip this secret if password is not found
+      fi
+
+      # Fetch the corresponding Base64 encoded certificate file
+      cert_file="certificate/base64-encoded/${password_var//_/.}.b64"  # Convert underscores back to dots for the certificate file
+
+      if [ ! -f "$cert_file" ]; then
+        echo "No Base64 encoded certificate found for $password_var. Skipping secret push."
+        continue  # Skip this secret if the certificate is not found
+      fi
+
+      # Read the Base64 certificate content
+      base64_cert_content=$(cat "$cert_file")
+
+      # Create a JSON payload to push to AWS Secrets Manager
+      json_payload=$(jq -n --arg password "$password" --arg cert_content "$base64_cert_content" \
+        '{"password": $password, "certificate": $cert_content}')
+
+      # Push the secret to AWS Secrets Manager
+      aws secretsmanager create-secret \
+        --name "$secret_name" \
+        --secret-string "$json_payload" \
+        --region $AWS_REGION
+
+      echo "Secret pushed to AWS Secrets Manager: $secret_name"
+    done
+  dependencies:
+    - base64_conversion  # This job depends on the base64_conversion stage to access the Base64 encoded certificates
+  environment:
+    name: production
+  only:
+    - main  # Or specify the branch you want to push secrets from (e.g., `only: - master`)

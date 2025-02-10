@@ -1,0 +1,30 @@
+stages:
+  - prepare_files
+  - base64_conversion
+
+# This is the stage you already had, where you renamed certificates
+prepare_files:
+  stage: prepare_files
+  script:
+    - echo "Preparing files and renaming certificates..."
+    - # Place your certificate renaming logic here
+
+# New stage to convert certificates to Base64 and store in a separate folder
+base64_conversion:
+  stage: base64_conversion
+  script:
+    - echo "Converting .p12 certificates to Base64..."
+    - mkdir -p certificate/base64-encoded  # Create the folder if it doesn't exist
+    - for cert_file in certificate/renamed/*.p12; do
+        # Extract the file name
+        file_name=$(basename "$cert_file");
+        echo "Processing file: $file_name";
+
+        # Convert the certificate to Base64, remove white spaces, and store it in the new folder
+        base64 "$cert_file" | tr -d '\n' > "certificate/base64-encoded/${file_name%.p12}.b64";
+
+        echo "Base64 encoded certificate saved to certificate/base64-encoded/${file_name%.p12}.b64";
+      done
+  artifacts:
+    paths:
+      - certificate/base64-encoded/*.b64  # Store the base64 encoded files as artifacts

@@ -1,31 +1,30 @@
-#!/bin/bash
-
 # Create the "unzipped" directory if it doesn't exist
-mkdir -p unzipped
+New-Item -ItemType Directory -Path "unzipped" -Force
 
 # Unzip all .zip files into the "unzipped" directory
-for zipfile in *.zip; do
-    # Extract the base name of the zip file (without the .zip extension)
-    base_name=$(basename "$zipfile" .zip)
-    
+Get-ChildItem -Path . -Filter *.zip | ForEach-Object {
+    $zipFile = $_.FullName
+    $baseName = [System.IO.Path]::GetFileNameWithoutExtension($zipFile)
+    $unzipDir = Join-Path -Path "unzipped" -ChildPath $baseName
+
     # Create a directory for the unzipped contents
-    unzip_dir="unzipped/$base_name"
-    mkdir -p "$unzip_dir"
-    
+    New-Item -ItemType Directory -Path $unzipDir -Force
+
     # Unzip the file into the corresponding directory
-    unzip -q "$zipfile" -d "$unzip_dir"
-done
+    Expand-Archive -Path $zipFile -DestinationPath $unzipDir
+}
 
 # Create the "rezipped" directory if it doesn't exist
-mkdir -p rezipped
+New-Item -ItemType Directory -Path "rezipped" -Force
 
 # Re-zip each of the unzipped folders into the "rezipped" directory
-for unzipped_dir in unzipped/*; do
-    # Get the base name of the unzipped directory
-    base_name=$(basename "$unzipped_dir")
-    
-    # Zip the contents of the unzipped directory
-    zip -r "rezipped/$base_name.zip" "$unzipped_dir" > /dev/null
-done
+Get-ChildItem -Path "unzipped" -Directory | ForEach-Object {
+    $unzippedDir = $_.FullName
+    $baseName = $_.Name
+    $zipFilePath = Join-Path -Path "rezipped" -ChildPath "$baseName.zip"
 
-echo "Unzipping and re-zipping completed!"
+    # Zip the contents of the unzipped directory
+    Compress-Archive -Path "$unzippedDir\*" -DestinationPath $zipFilePath
+}
+
+Write-Host "Unzipping and re-zipping completed!"

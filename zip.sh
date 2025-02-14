@@ -1,6 +1,9 @@
 # Create the "unzipped" directory if it doesn't exist
 New-Item -ItemType Directory -Path "unzipped" -Force
 
+# Create the "rezipped" directory if it doesn't exist
+New-Item -ItemType Directory -Path "rezipped" -Force
+
 # Unzip all .zip files into the "unzipped" directory
 Get-ChildItem -Path . -Filter *.zip | ForEach-Object {
     $zipFile = $_.FullName
@@ -12,19 +15,16 @@ Get-ChildItem -Path . -Filter *.zip | ForEach-Object {
 
     # Unzip the file into the corresponding directory
     Expand-Archive -Path $zipFile -DestinationPath $unzipDir
-}
 
-# Create the "rezipped" directory if it doesn't exist
-New-Item -ItemType Directory -Path "rezipped" -Force
+    # Iterate through each .p12 file in the unzipped directory
+    Get-ChildItem -Path $unzipDir -Filter *.p12 | ForEach-Object {
+        $p12File = $_.FullName
+        $p12FileName = $_.Name
 
-# Re-zip each of the unzipped folders into the "rezipped" directory
-Get-ChildItem -Path "unzipped" -Directory | ForEach-Object {
-    $unzippedDir = $_.FullName
-    $baseName = $_.Name
-    $zipFilePath = Join-Path -Path "rezipped" -ChildPath "$baseName.zip"
-
-    # Zip the contents of the unzipped directory
-    Compress-Archive -Path "$unzippedDir\*" -DestinationPath $zipFilePath
+        # Create a zip file for each .p12 file in the "rezipped" folder
+        $zipFilePath = Join-Path -Path "rezipped" -ChildPath "$p12FileName.zip"
+        Compress-Archive -Path $p12File -DestinationPath $zipFilePath
+    }
 }
 
 Write-Host "Unzipping and re-zipping completed!"

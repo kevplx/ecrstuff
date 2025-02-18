@@ -1,0 +1,112 @@
+stages:
+  - process_and_push
+
+process_and_push:
+  stage: process_and_push
+  script:
+    - echo "Processing secrets, downloading certificates from Secure Files, converting to Base64, and pushing to AWS Secrets Manager..."
+
+    # Step 1: Fetch secret names from AWS Secrets Manager
+    - echo "Retrieving secret names from AWS Secrets Manager..."
+    - secret_names=$(aws secretsmanager list-secrets --query 'SecretList[?Name.startsWith(@, `my-sectrans-`) == `true`].Name' --output text)
+
+    if [ -z "$secret_names" ]; then
+      echo "No secrets found in AWS Secrets Manager. Exiting..."
+      exit 1  # Exit if no secrets are found
+    fi
+
+    # Step 2: Download zip files from GitLab Secure Files only for the current environment
+    - echo "Downloading zip files from GitLab Secure Files..."
+    - secure_file_names=$(curl --header "JOB-TOKEN: $CI_JOB_TOKEN" "https://gitlab.com/api/v4/projects/$CI_PROJECT_ID/uploads" | jq -r '.[].name' | grep "QA.TO.*.zip")
+    
+    if [ -z "$secure_file_names" ]; then
+      echo "No zip files found in GitLab Secure Files. Exiting..."
+      exit 1  # Exit if no zip files are found
+    fi
+
+    # Iterate through the zip files
+    - for file_name in $secure_file_names; do
+        echo "Processing file: $file_name"
+
+        # Extract the octets from the file name (cdric12.QA.TO.ABC.p12)
+        octet1=$(echo "$file_name" | cut -d '.' -f1)  # e.g., "cdric12"
+        octet2=$(echo "$file_name" | cut -d '.' -f2)  # e.g., "QA"
+
+        echo "First octet: $octet1"
+        echo "Second octet: $octet2"
+
+        # Determine if the file matches the current environment
+        if [ "$ENVIRONMENT" == "dev" ] && [[ "$octet1" == "cdric"* ]] && [[ "$octet2" == "QA" ]]; then
+          echo "This is a dev environment file. Downloading: $file_name"
+          curl --header "JOB-TOKEN: $CI_JOB_TOKEN" --output "secure_files/$file_name" "https://gitlab.com/api/v4/projects/$CI_PROJECT_ID/uploads/$file_name"
+        
+        elif [ "$ENVIRONMENT" == "qae" ] && [[ "$octet1" == "cdrie"* ]] && [[ "$octet2" == "QA" ]]; then
+          echo "This is a qae environment file. Downloading: $file_name"
+          curl --header "JOB-TOKEN: $CI_JOB_TOKEN" --output "secure_files/$file_name" "https://gitlab.com/api/v4/projects/$CI_PROJECT_ID/uploads/$file_name"
+        
+        else
+          echo "File $file_name does not match the current environment. Skipping..."
+        fi
+      done
+
+    # Step 3: Extract folder names from AWS secrets (my-sectrans-{env}.TO.{folder})
+    - for secret_name in $secret_names; do
+        echo "Processing secret: $secret_name"
+        
+        # Extract the folder name (e.g., 'ABC' from 'my-sectrans-dev.TO.ABC')
+        folder=$(echo $secret_name | sed -E 's/my-sectrans-[^\.]+\.(QA|DEV|PROD)\.TO\.(.*)/\2/')
+        echo "Extracted folder name: $folder"
+
+        # Construct the password variable name (e.g., dev_QA_TO_ABC)
+        password_var="${secret_name#my-sectrans-}"
+        password_var="${password_var//./_}"  # Replace dots with underscores in GitLab variable names
+
+        # Fetch the password from GitLab CI/CD environment variables dynamically
+        password="${!password_var}"
+
+        if [ -z "$password" ]; then
+          echo "No password found matching $password_var for $secret_name. Skipping secret push."
+          continue  # Skip this secret if password is not found
+        fi
+
+        # Step 4: Process zip files and rename certificates
+        zip_file="secure_files/${folder}.QA.TO.${folder}.zip"
+        if [ ! -f "$zip_file" ]; then
+          echo "No zip file found for $folder. Skipping secret push."
+          continue  # Skip if zip file is not found
+        fi
+
+        # Unzip the certificate zip file into a folder
+        unzip "$zip_file" -d "certificates/$folder"
+        echo "Unzipped $zip_file into certificates/$folder"
+
+        # Step 5: Convert certificates to Base64
+        for cert_file in "certificates/$folder"/*.p12; do
+          file_name=$(basename "$cert_file")
+          base64_cert_file="certificates/base64-encoded/${file_name%.p12}.b64"
+          base64 "$cert_file" | tr -d '\n' > "$base64_cert_file"
+          echo "Converted $cert_file to Base64 and saved as $base64_cert_file"
+        done
+
+        # Step 6: Push to AWS Secrets Manager
+        base64_cert_content=$(cat "certificates/base64-encoded/${folder}.b64")
+
+        # Create the JSON payload for AWS Secrets Manager
+        json_payload=$(jq -n --arg password "$password" --arg cert_content "$base64_cert_content" \
+          '{"password": $password, "certificate": $cert_content}')
+
+        # Check if the JSON payload is correctly formatted
+        echo "JSON Payload: $json_payload"
+
+        # Step 7: Push the secret to AWS Secrets Manager
+        aws secretsmanager create-secret \
+          --name "$secret_name" \
+          --secret-string "$json_payload" \
+          --region $AWS_REGION
+
+        echo "Secret pushed to AWS Secrets Manager: $secret_name"
+      done
+  environment:
+    name: production
+  only:
+    - main

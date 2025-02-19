@@ -1,0 +1,46 @@
+Technical Documentation: Load Balancer Strategy for Public and Internal Services in ECS
+Objective
+This document aims to evaluate and recommend the best approach for managing internal and public-facing services in an Amazon ECS cluster, with the goal of ensuring secure access control for services that should not be exposed to the public internet.
+
+Context
+The ECS cluster currently hosts both public-facing and internal services, all tied to a single public-facing Application Load Balancer (ALB). There is a need to restrict access to certain internal services within the same ECS cluster, ensuring they are not publicly accessible via the URI or similar means.
+
+The two primary options under consideration are:
+
+Using a Single ALB with access policies to control public exposure.
+Using Separate Load Balancers for public and internal services.
+Option 1: Single Load Balancer with Access Policies
+In this approach, all services are placed behind a single Application Load Balancer, and access to internal services is restricted via the use of ALB routing rules and policies.
+
+Pros:
+Cost Efficiency: Having a single ALB reduces the overhead of managing multiple load balancers and associated resources (e.g., certificates, security groups, etc.).
+Simplified Management: Fewer ALBs to configure and maintain.
+Traffic Segmentation: ALB routing rules and security group configurations can be used to ensure that only authorized traffic reaches internal services. For example, internal services could only accept traffic from other services within the VPC or through private IPs.
+Cons:
+Complex Access Control: Setting up fine-grained access controls, such as using ALB listener rules to restrict access to specific paths or subnets, can become complex and error-prone. Misconfigurations could accidentally expose internal services to the public.
+Scalability and Flexibility: Adding more services, especially if they require different levels of access control, can make the ALB rules more difficult to manage. Moreover, public and private services might have different scaling requirements, which can complicate the infrastructure.
+Risk of Misconfiguration: Despite best efforts, there is always a risk that internal services might unintentionally be exposed, especially as the environment grows and changes.
+Option 2: Separate Load Balancers for Public and Internal Services
+In this approach, you deploy two separate ALBs: one for public-facing services and one for internal services, with the latter not having any direct access from the public internet.
+
+Pros:
+Clear Separation of Concerns: By using separate ALBs, you can clearly define which services are public and which are internal, making management simpler and reducing the risk of accidental exposure.
+Enhanced Security: Internal services can be fully isolated from public internet access, reducing the attack surface. Internal services can be exposed to the public through private IPs, VPC endpoints, or through private ALB routing.
+Scalability: Each ALB can be independently scaled based on the traffic needs of public and internal services. This ensures that internal services are not overburdened by public-facing traffic, allowing for more efficient resource allocation.
+Flexibility: The architecture is more flexible, as internal services can be reconfigured, upgraded, or replaced without impacting the public services.
+Cons:
+Additional Cost: Managing separate ALBs increases the infrastructure cost, both in terms of the ALB itself and the associated resources (such as certificates, security groups, and routing configurations).
+More Complex Setup: Setting up two load balancers requires additional configuration and maintenance. Traffic routing between the services in the ECS cluster needs to be handled carefully, especially when routing internal traffic to the correct ALB.
+Management Overhead: With two load balancers, there is an increase in complexity regarding the network, security groups, and IAM roles/policies required for both ALBs to work together securely.
+Recommended Solution: Separate Load Balancers for Public and Internal Services
+After evaluating the pros and cons of both options, using separate load balancers for public and internal services is the recommended solution.
+
+This approach offers better security, clearer management, and improved scalability. By separating public and internal traffic at the load balancer level, you reduce the risk of misconfigurations that could accidentally expose internal services. Additionally, the flexibility of managing each ALB separately ensures that your infrastructure can scale more easily, and security concerns are mitigated by keeping internal services fully isolated from external access.
+
+Implementation Considerations:
+VPC Security: Configure security groups to allow only internal traffic (e.g., from other ECS tasks or internal VPC endpoints) to access the internal ALB.
+Routing Rules: Ensure that the internal ALB does not have public-facing listener rules and that the public ALB is configured to route traffic only to public-facing services.
+IAM Policies: Define appropriate IAM roles and policies to control access between services within the ECS cluster and between the ALBs.
+Traffic Encryption: Use SSL/TLS certificates on both ALBs to ensure secure communication, even for internal traffic.
+Scaling: Independently scale the load balancers based on traffic patterns, ensuring that public services can scale separately from internal ones.
+In conclusion, while a single ALB may seem appealing for cost and simplicity, separating public and internal services provides a more secure, scalable, and manageable approach, especially as the environment grows

@@ -1,0 +1,40 @@
+# Get Project ID (if needed for API calls)
+PROJECT_ID=$(curl --header "PRIVATE-TOKEN: $CI_JOB_TOKEN" "$GITLAB_API_URL/api/v4/projects?search=your_project_name" | jq -r '.[0].id')
+
+# Initialize file IDs array
+FILE_IDS=()
+
+# Paginate through all pages to get file IDs
+PAGE=1
+while true; do
+  # Make the API call to get Secure Files
+  RESPONSE=$(curl --header "PRIVATE-TOKEN: $CI_JOB_TOKEN" \
+    "$GITLAB_API_URL/api/v4/projects/$PROJECT_ID/uploads?page=$PAGE")
+
+  # Get the file IDs from the response
+  FILE_IDS_PAGE=$(echo "$RESPONSE" | jq -r '.[] | select(.path != null and .path | contains(".p12")) | .id')
+
+  # If there are no files on this page, exit the loop
+  if [ -z "$FILE_IDS_PAGE" ]; then
+    break
+  fi
+
+  # Append the file IDs from this page to the FILE_IDS array
+  FILE_IDS+=($FILE_IDS_PAGE)
+
+  # Check if there is another page
+  NEXT_PAGE=$(echo "$RESPONSE" | jq -r '.[0].pagination["X-Next-Page"]')
+
+  # If there is no next page, stop
+  if [ -z "$NEXT_PAGE" ]; then
+    break
+  fi
+
+  # Move to the next page
+  PAGE=$NEXT_PAGE
+done
+
+# Now, FILE_IDS contains all the file IDs for .p12 files, and you can use them as needed
+echo "Retrieved file IDs: ${FILE_IDS[@]}"
+
+# Continue with the rest of the script to download and process these files

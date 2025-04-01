@@ -96,3 +96,56 @@ h2. Summary Comparison Table
 h2. Recommendation
 
 If the priority is low overhead and quick implementation, Option 1 (Lambda automation) is recommended. If auditability and controlled handling are critical, Option 2 (GitLab Jobs) is suitable. For long-term usability and non-technical access, Option 3 (Angular Web UI) offers the best UX but requires higher investment.
+
+
+
+🟩 Option 1: Lambda Automation
+1. Title: Create S3 Buckets and Folder Structure for Masked Data Workflow
+Summary: Set up source and destination S3 buckets/folders in Prod and QA accounts for masked data file transfers.
+
+2. Title: Develop AWS Lambda Function for S3 File Transfer
+Summary: Create a Lambda function to trigger on S3 upload events and copy masked files from the Prod bucket to the QA bucket.
+
+3. Title: Configure IAM Roles and Policies for Lambda Access
+Summary: Create and assign IAM roles that allow the Lambda function to access source and destination S3 buckets securely.
+
+4. Title: Set Up CloudWatch Logging and Alerts for Lambda Execution
+Summary: Configure CloudWatch to log Lambda executions and raise alerts on failures.
+
+5. Title: Perform End-to-End Test of Lambda-Based File Transfer
+Summary: Upload a test file to the source S3 bucket and verify that it is successfully transferred and accessible in QA.
+
+🟨 Option 2: GitLab CI/CD Controlled Transfer
+1. Title: Write GitLab Job Script to Move Files Between S3 Buckets
+Summary: Develop a GitLab CI job that moves files based on input variables specifying source and destination S3 paths.
+
+2. Title: Configure GitLab CI/CD Variables for S3 Access
+Summary: Store AWS credentials and required environment variables securely in GitLab for use in the CI pipeline.
+
+3. Title: Create IAM User/Roles for GitLab CI Access to S3
+Summary: Configure IAM with limited S3 permissions to enable secure file movement from GitLab jobs.
+
+4. Title: Document Usage Instructions for QA Testers
+Summary: Provide step-by-step guidance on how to trigger the GitLab job with appropriate parameters.
+
+5. Title: Test GitLab File Transfer Workflow
+Summary: Run the GitLab job with a sample file and validate the file is correctly moved between buckets.
+
+🟦 Option 3: Angular Web UI for S3 File Management
+1. Title: Design Angular Web UI Layout and Features for S3 File Handling
+Summary: Define and mock up the layout and core functionality of the Angular app including file browsing, download, and upload.
+
+2. Title: Set Up Angular Project and Integrate AWS SDK
+Summary: Create the Angular project and implement basic S3 listing, file download, and upload features using AWS SDK.
+
+3. Title: Configure AWS Cognito for User Authentication
+Summary: Implement secure authentication to restrict access to authorized QA testers only.
+
+4. Title: Create IAM Roles and S3 Bucket Policies for Web Access
+Summary: Define the required IAM roles and permissions for the Angular app to securely access S3 resources.
+
+5. Title: Deploy Angular App to AWS (S3 or Amplify)
+Summary: Package and deploy the Angular app to a suitable AWS hosting service with a public/private access layer.
+
+6. Title: QA Testing and Feedback Collection on Web App
+Summary: Allow selected users to test the web interface and provide feedback for improvements.

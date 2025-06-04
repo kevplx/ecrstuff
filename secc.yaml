@@ -1,0 +1,86 @@
+Great — here’s the updated GitLab CI/CD script to:
+
+Accept three variables:
+
+CRT_FILE_NAME – the name of the .crt file from GitLab Secure Files.
+
+SECRET_NAME – the name of the secret to store in AWS Secrets Manager.
+
+CRT_PASSWORD – the password associated with the certificate.
+
+
+Base64-encode the cert file.
+
+Create a JSON-encoded secret with:
+
+{
+  "cert": "<base64>",
+  "password": "<password>"
+}
+
+
+
+---
+
+✅ Final GitLab Job Script
+
+push_crt_to_secrets:
+  image: amazonlinux:2
+  variables:
+    AWS_REGION: us-east-1  # Adjust as needed
+  script:
+    - yum install -y unzip curl aws-cli coreutils jq
+
+    # Check required variables
+    - |
+      if [ -z "$CRT_FILE_NAME" ] || [ -z "$SECRET_NAME" ] || [ -z "$CRT_PASSWORD" ]; then
+        echo "ERROR: CRT_FILE_NAME, SECRET_NAME, and CRT_PASSWORD must be defined."
+        exit 1
+      fi
+
+    # Download .crt file from GitLab Secure Files
+    - echo "Downloading $CRT_FILE_NAME from GitLab Secure Files..."
+    - curl --header "JOB-TOKEN: $CI_JOB_TOKEN" \
+           --output "$CRT_FILE_NAME" \
+           "$CI_API_V4_URL/projects/$CI_PROJECT_ID/secure_files/$CRT_FILE_NAME"
+
+    # Base64 encode cert content
+    - echo "Encoding $CRT_FILE_NAME to Base64..."
+    - BASE64_CONTENT=$(base64 -w 0 "$CRT_FILE_NAME")
+
+    # Create JSON payload
+    - |
+      SECRET_JSON=$(jq -n --arg cert "$BASE64_CONTENT" --arg password "$CRT_PASSWORD" \
+        '{cert: $cert, password: $password}')
+
+    # Push to AWS Secrets Manager
+    - echo "Pushing JSON secret to AWS Secrets Manager: $SECRET_NAME"
+    - aws secretsmanager create-secret \
+        --name "$SECRET_NAME" \
+        --secret-string "$SECRET_JSON" \
+        --region "$AWS_REGION" \
+      || aws secretsmanager put-secret-value \
+        --secret-id "$SECRET_NAME" \
+        --secret-string "$SECRET_JSON" \
+        --region "$AWS_REGION"
+
+  only:
+    - main  # Or whichever branch you prefer
+
+
+---
+
+🧪 Example Usage
+
+You can pass the variables at runtime or define them in your pipeline:
+
+variables:
+  CRT_FILE_NAME: myapp.crt
+  SECRET_NAME: prod/myapp/cert
+  CRT_PASSWORD: myStrongPassword123!
+
+
+---
+
+Let me know if you'd like this packaged as a template.yml for reuse across projects or if you need to encrypt the password before storing.
+

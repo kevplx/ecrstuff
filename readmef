@@ -1,0 +1,90 @@
+Here's a README.md you can include in your GitLab repository to document the purpose and usage of this CI/CD job:
+
+
+---
+
+# 🔐 Certificate Uploader to AWS Secrets Manager
+
+This GitLab project includes a reusable CI/CD job to upload `.crt` certificate files (from GitLab Secure Files) and their associated passwords to AWS Secrets Manager as a JSON-encoded secret.
+
+---
+
+## 📦 What This Job Does
+
+- Downloads a `.crt` file stored in GitLab Secure Files.
+- Base64-encodes the certificate.
+- Combines the Base64-encoded content with a user-supplied password.
+- Pushes the data as a JSON secret to AWS Secrets Manager using the following structure:
+
+```json
+{
+  "cert": "<base64_encoded_cert>",
+  "password": "<your_password>"
+}
+
+
+---
+
+🧩 Variables Required
+
+You must provide the following variables at runtime or in your GitLab pipeline:
+
+Variable	Description
+
+CRT_FILE_NAME	The name of the .crt file in GitLab Secure Files
+SECRET_NAME	Name of the AWS Secrets Manager secret
+CRT_PASSWORD	Password associated with the certificate
+AWS_REGION	(Optional) AWS region (default: us-east-1)
+
+
+
+---
+
+🚀 Example GitLab Pipeline Usage
+
+variables:
+  CRT_FILE_NAME: mycert.crt
+  SECRET_NAME: prod/myapp/cert
+  CRT_PASSWORD: supersecurepassword
+  AWS_REGION: us-east-1
+
+include:
+  - local: .gitlab-ci.yml
+
+Or trigger the job manually in GitLab with the variables defined in the UI.
+
+
+---
+
+🛠️ Notes
+
+The .crt file must already be uploaded to GitLab Secure Files under Settings > CI/CD > Secure Files.
+
+Your GitLab runner must have AWS credentials (via environment variables or IAM role) to access AWS Secrets Manager.
+
+The job handles both creation and update of secrets.
+
+
+
+---
+
+🔐 Secret Example in Secrets Manager
+
+After successful execution, AWS Secrets Manager will contain:
+
+{
+  "cert": "MIICljCCAX4CCQ... (Base64)",
+  "password": "supersecurepassword"
+}
+
+
+---
+
+📄 License
+
+MIT License – use and modify freely.
+
+---
+
+Let me know if you'd like it formatted for GitLab Wiki or as inline documentation in `.gitlab-ci.yml`.
+

@@ -1,0 +1,40 @@
+# Required env vars:
+#   LOCK_TABLE     = terraform-locks (or your table name)
+#   LOCK_PREFIX    = env/project/folder/   # the folder path prefix in S3 key space
+#   AWS_REGION     = us-gov-east-1 (or your backend's region)
+# Optional:
+#   DRY_RUN=true   # to preview without deleting
+
+set -euo pipefail
+
+echo "Scanning $LOCK_TABLE for locks with prefix: $LOCK_PREFIX"
+TOKEN=''
+COUNT=0
+
+while : ; do
+  RESP=$(aws dynamodb scan \
+    --region "$AWS_REGION" \
+    --table-name "$LOCK_TABLE" \
+    --filter-expression 'begins_with(LockID, :p)' \
+    --expression-attribute-values '{"\":p\"":{"S":"'"$LOCK_PREFIX"'"}}' \
+    --projection-expression 'LockID' \
+    ${TOKEN:+--exclusive-start-key "$TOKEN"})
+
+  # list found LockIDs
+  echo "$RESP" | jq -r '.Items[].LockID.S' | while read -r ID; do
+    [ -z "$ID" ] && continue
+    echo "Found lock: $ID"
+    if [ "${DRY_RUN:-}" != "true" ]; then
+      aws dynamodb delete-item \
+        --region "$AWS_REGION" \
+        --table-name "$LOCK_TABLE" \
+        --key "{\"LockID\":{\"S\":\"$ID\"}}"
+    fi
+    COUNT=$((COUNT+1))
+  done
+
+  TOKEN=$(echo "$RESP" | jq -c '.LastEvaluatedKey // empty')
+  [ -z "$TOKEN" ] && break
+done
+
+echo "Done. Locks processed: $COUNT"

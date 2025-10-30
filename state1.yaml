@@ -1,0 +1,126 @@
+check_lock:
+  stage: check
+  variables:
+    AWS_REGION: "us-gov-east-1"          # must match your backend region
+    LOCK_TABLE: "terraform-locks"        # your DynamoDB lock table name
+    # One of these:
+    # LOCK_PATH: "env/proj/network/terraform.tfstate"
+    # LOCK_PREFIX: "env/proj/"            # include trailing slash if using prefix
+  script:
+    - eval $(aws sts assume-role --role-arn "arn:aws-us-gov:iam::${AWS_ACCOUNT_NUMBER}:role/${ROLE_NAME}" --role-session-name=check_lock)
+    - apk add --no-cache jq >/dev/null || true
+    - set -euo pipefail
+
+    # Check single state lock (exact path)
+    - |
+      if [ -n "${LOCK_PATH:-}" ]; then
+        echo "🔍 Checking DynamoDB for exact LockID: $LOCK_PATH"
+        aws dynamodb get-item \
+          --region "$AWS_REGION" \
+          --table-name "$LOCK_TABLE" \
+          --key "{\"LockID\":{\"S\":\"$LOCK_PATH\"}}" \
+          --output json | tee locks.json
+
+        if jq -e '.Item' locks.json >/dev/null 2>&1; then
+          echo -e "\n✅ Found lock item:"
+          jq '.Item' locks.json
+        else
+          echo -e "\n✅ No lock found for that exact LockID."
+        fi
+        exit 0
+      fi
+
+    # Otherwise, check all locks under a folder prefix
+    - |
+      if [ -z "${LOCK_PREFIX:-}" ]; then
+        echo "❌ ERROR: Provide either LOCK_PATH (exact) or LOCK_PREFIX (prefix)." >&2
+        exit 2
+      fi
+
+      echo "🔍 Scanning for locks under prefix: $LOCK_PREFIX"
+      : > locks.json
+      NEXT_KEY=''
+      TOTAL=0
+
+      while : ; do
+        RESP=$(aws dynamodb scan \
+          --region "$AWS_REGION" \
+          --table-name "$LOCK_TABLE" \
+          --filter-expression 'begins_with(LockID, :p)' \
+          --expression-attribute-values '{":p":{"S":"'"$LOCK_PREFIX"'"}}' \
+          --projection-expression 'LockID, Who, Operation, Created' \
+          ${NEXT_KEY:+--exclusive-start-key "$NEXT_KEY"} \
+          --output json)
+
+        # merge results into one file
+        if [ ! -s locks.json ]; then
+          echo "$RESP" | jq '{Items: .Items}' > locks.json
+        else
+          TMP=$(mktemp)
+          jq --slurp 'reduce .[] as $x ({Items: []}; .Items += $x.Items)' locks.json <(echo "$RESP") > "$TMP"
+          mv "$TMP" locks.json
+        fi
+
+        COUNT=$(echo "$RESP" | jq '.Items | length')
+        TOTAL=$((TOTAL + COUNT))
+        NEXT_KEY=$(echo "$RESP" | jq -c '.LastEvaluatedKey // empty')
+        [ -z "$NEXT_KEY" ] && break
+      done
+
+      if [ "$TOTAL" -eq 0 ]; then
+        echo "✅ No locks found under prefix."
+      else
+        echo "⚠️  Found $TOTAL lock(s):"
+        jq -r '.Items[] | "- " + .LockID.S' locks.json
+      fi
+  artifacts:
+    when: always
+    paths:
+      - locks.json
+    expire_in: 2 days
+  when: manual
+  allow_failure: true
+
+---
+
+clear_lock_prefix:
+  stage: clear
+  when: manual
+  variables:
+    AWS_REGION: "us-gov-east-1"
+    LOCK_TABLE: "terraform-locks"
+    LOCK_PREFIX: "env/proj/"            # folder prefix (include trailing slash)
+  script:
+    - eval $(aws sts assume-role --role-arn "arn:aws-us-gov:iam::${AWS_ACCOUNT_NUMBER}:role/${ROLE_NAME}" --role-session-name=clear_prefix)
+    - apk add --no-cache jq >/dev/null || true
+    - set -euo pipefail
+
+    - echo "🧹 Clearing all locks under prefix: $LOCK_PREFIX"
+    - |
+      NEXT_KEY=''
+      TOTAL=0
+      while : ; do
+        RESP=$(aws dynamodb scan \
+          --region "$AWS_REGION" \
+          --table-name "$LOCK_TABLE" \
+          --filter-expression 'begins_with(LockID, :p)' \
+          --expression-attribute-values '{":p":{"S":"'"$LOCK_PREFIX"'"}}' \
+          --projection-expression 'LockID' \
+          ${NEXT_KEY:+--exclusive-start-key "$NEXT_KEY"} \
+          --output json)
+
+        echo "$RESP" | jq -r '.Items[].LockID.S' | while read -r id; do
+          [ -z "$id" ] && continue
+          echo "Deleting lock: $id"
+          aws dynamodb delete-item \
+            --region "$AWS_REGION" \
+            --table-name "$LOCK_TABLE" \
+            --key "{\"LockID\":{\"S\":\"$id\"}}"
+          TOTAL=$((TOTAL + 1))
+        done
+
+        NEXT_KEY=$(echo "$RESP" | jq -c '.LastEvaluatedKey // empty')
+        [ -z "$NEXT_KEY" ] && break
+      done
+
+      echo "✅ Finished clearing locks. Total deleted: $TOTAL"
